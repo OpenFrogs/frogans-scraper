@@ -1,3 +1,6 @@
+# Archives shouldn't be uploaded to the respository
+archive/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
