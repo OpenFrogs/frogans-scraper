@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 import os
 import requests
+import re
 import defusedxml.ElementTree as ET # Can swap for Python's built-in, this just provides a bit more security
 
 outdir = os.path.join(os.getcwd(), "archive")
@@ -9,7 +10,8 @@ os.makedirs(outdir, exist_ok=True)
 networks = {}
 sites = {}
 
-addresses_queue = ["frogans*demo", "frogans*demo/img/btn-cosmicvoyage-hover.png"]
+addresses_queue = ["frogans*demo"]
+visited = set()
 
 fpbl_url = "http://fpb.p2205.test.lab.op3ft.org/architecture-1/fpbl1.0/data.fpbl"
 
@@ -58,6 +60,10 @@ print("Using FNSL server "+fnsl_server)
 
 while(len(addresses_queue) > 0):
     address = addresses_queue.pop()
+    if address in visited:
+        continue
+    visited.add(address)
+    print("Visiting "+address)
     network, siteLong = address.split("*")
     addrParts = siteLong.split("/", maxsplit=1)
     site = addrParts[0]
@@ -88,18 +94,34 @@ while(len(addresses_queue) > 0):
         f.close()
         sites[site] = fnsl_site
     
-    root = ET.fromstring(fnsl_site)
+    try:
+        root = ET.fromstring(fnsl_site)
+    except Exception as _:
+        print("Invalid FNSL data, skipping")
+        continue
     site_server = get_server_from_fnsl(root)
     if path == None:
         print(f"Found server {site_server} for {address}")
         path = root.find(".//file-selector").text
 
-    site_root = f"http://{site_server}/network-{unicode_to_b36(network)}.site-{unicode_to_b36(site)}"    
-    data = requests.get(site_root + path, headers=headers).content
+    site_root = f"http://{site_server}/network-{unicode_to_b36(network)}.site-{unicode_to_b36(site)}"
+    res = requests.get(site_root + path, headers=headers)
     fpath = os.path.join(src_dir, path[1:])
-    os.makedirs(os.path.dirname(fpath), exist_ok=True)
+    if not os.path.exists(fpath):
+        os.makedirs(os.path.dirname(fpath), exist_ok=True)
+
     f = open(fpath, "wb+")
-    f.write(data)
+    f.write(res.content)
     f.close()
     
+    fsdl_dec = re.search(r"<frogans-fsdl version=['\"]([^'\"]+)['\"]>", res.text)
+    if fsdl_dec is not None:
+        version = fsdl_dec.group(1)
+        if version != "4.0":
+            print("Unexpected version "+version+" at address "+address)
+        for locMatch in re.finditer(r"(?:file|address)=['\"]([^'\"]+)['\"]", res.text):
+            location = locMatch.group(1)
+            if location.startswith("/"):
+                location = network + "*" + site + location
+            addresses_queue.append(location)
     # TODO: check if FSDL, extract files accordingly
