@@ -3,6 +3,11 @@ import os
 import requests
 import re
 import defusedxml.ElementTree as ET # Can swap for Python's built-in, this just provides a bit more security
+import argparse
+
+parser = argparse.ArgumentParser(prog="Frogans Scraper (Alpha)")
+parser.add_argument("--skip-images", action="store_true", help="Skip downloading images")
+args = parser.parse_args()
 
 outdir = os.path.join(os.getcwd(), "archive")
 os.makedirs(outdir, exist_ok=True)
@@ -16,6 +21,8 @@ visited = set()
 fpbl_url = "http://fpb.p2205.test.lab.op3ft.org/architecture-1/fpbl1.0/data.fpbl"
 
 headers = {'User-Agent': 'Frogans Scraper 0.1'}
+
+image_extensions = ["png", "jpg"]
 
 # https://stackoverflow.com/a/60498038/8507259
 def b36_encode(i):
@@ -62,6 +69,9 @@ while(len(addresses_queue) > 0):
     address = addresses_queue.pop()
     if address in visited:
         continue
+    extension = re.search("\\.(\\w+)$", address)
+    if args.skip_images and extension and extension.group(1) in image_extensions:
+        continue
     visited.add(address)
     print("Visiting "+address)
     network, siteLong = address.split("*")
@@ -77,7 +87,7 @@ while(len(addresses_queue) > 0):
     if network in networks:
         fnsl_network = networks[network]
     else:
-        fnsl_network = requests.get(f'http://{fnsl_server}/fnsl5.0/network-{unicode_to_b36(network)}.fnsl', headers=headers).text
+        fnsl_network = requests.get(f'http://{fnsl_server}/fnsl5.0/network-{unicode_to_b36(network.lower())}.fnsl', headers=headers).text
         os.makedirs(network_dir, exist_ok=True)
         f = open(os.path.join(network_dir, "network-"+unicode_to_b36(network)+".fnsl"), "w+")
         f.write(fnsl_network)
@@ -87,16 +97,16 @@ while(len(addresses_queue) > 0):
     if site in sites:
         fnsl_site = sites[site]
     else:
-        fnsl_site = requests.get(f'http://{fnsl_server}/fnsl5.0/network-{unicode_to_b36(network)}.site-{unicode_to_b36(site)}.fnsl', headers=headers).text
+        fnsl_site = requests.get(f'http://{fnsl_server}/fnsl5.0/network-{unicode_to_b36(network.lower())}.site-{unicode_to_b36(site.lower())}.fnsl', headers=headers).text
         os.makedirs(site_dir, exist_ok=True)
-        f = open(os.path.join(site_dir, f'network-{unicode_to_b36(network)}.site-{unicode_to_b36(site)}.fnsl'), "w+")
+        f = open(os.path.join(site_dir, f'network-{unicode_to_b36(network.lower())}.site-{unicode_to_b36(site.lower())}.fnsl'), "w+")
         f.write(fnsl_site)
         f.close()
         sites[site] = fnsl_site
     
     try:
         root = ET.fromstring(fnsl_site)
-    except Exception as _:
+    except Exception as e:
         print("Invalid FNSL data, skipping")
         continue
     site_server = get_server_from_fnsl(root)
@@ -104,7 +114,7 @@ while(len(addresses_queue) > 0):
         print(f"Found server {site_server} for {address}")
         path = root.find(".//file-selector").text
 
-    site_root = f"http://{site_server}/network-{unicode_to_b36(network)}.site-{unicode_to_b36(site)}"
+    site_root = f"http://{site_server}/network-{unicode_to_b36(network.lower())}.site-{unicode_to_b36(site.lower())}"
     res = requests.get(site_root + path, headers=headers)
     fpath = os.path.join(src_dir, path[1:])
     if not os.path.exists(fpath):
