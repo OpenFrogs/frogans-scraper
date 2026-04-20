@@ -4,6 +4,12 @@ import requests
 import re
 import defusedxml.ElementTree as ET # Can swap for Python's built-in, this just provides a bit more security
 import hashlib
+import argparse
+from pathvalidate import sanitize_filename
+
+parser = argparse.ArgumentParser(prog="Frogans Scraper (Alpha)")
+parser.add_argument("--skip-images", action="store_true", help="Skip downloading images")
+args = parser.parse_args()
 
 outdir = os.path.join(os.getcwd(), "archive-alpha")
 os.makedirs(outdir, exist_ok=True)
@@ -19,6 +25,8 @@ fal_server = "fra-par-th2-fns-01-srv-01-01.fns.test.fcr.frogans"
 #fal_server = "51.178.59.247"
 
 headers = {'User-Agent': 'Frogans Scraper 0.1'}
+
+image_extensions = ["png", "jpg"]
 
 # https://stackoverflow.com/a/60498038/8507259
 def b36_encode(i):
@@ -49,12 +57,18 @@ def get_server_from_fnsl(root):
         for param in ucsr_path.findall("./location"):
             locations.append(param.text)
     
+    if len(locations) == 0:
+        return None
+    
     fnsl_server_idx = locations.index("public")
     return domain_names[fnsl_server_idx] + ":" + ports[fnsl_server_idx] + directories[fnsl_server_idx]
 
 while(len(addresses_queue) > 0):
     address = addresses_queue.pop()
     if address in visited:
+        continue
+    extension = re.search("\\.(\\w+)$", address)
+    if args.skip_images and extension and extension.group(1) in image_extensions:
         continue
     visited.add(address)
     print("Visiting "+address)
@@ -75,7 +89,7 @@ while(len(addresses_queue) > 0):
         print(f'http://{fal_server}/{sha1[0:2]}/{sha1[2:4]}/{sha1[4:6]}/{fnsl_enc}')
         fnsl_site = requests.get(f'http://{fal_server}/{sha1[0:2]}/{sha1[2:4]}/{sha1[4:6]}/{fnsl_enc}', headers=headers).text
         os.makedirs(site_dir, exist_ok=True)
-        f = open(os.path.join(site_dir, f'network-{unicode_to_b36(network.lower())}.site-{unicode_to_b36(site.lower())}.fnsl'), "w+")
+        f = open(os.path.join(site_dir, f'network-{unicode_to_b36(network.lower())}.site-{unicode_to_b36(site.lower())}.fnsl'), "w+", encoding="utf-8")
         f.write(fnsl_site)
         f.close()
         sites[site] = fnsl_site
@@ -86,13 +100,16 @@ while(len(addresses_queue) > 0):
         print("Invalid FNSL data, skipping")
         continue
     site_server = get_server_from_fnsl(root)
+    if site_server == None:
+        print("No site available for domain")
+        continue
     if path == None:
         print(f"Found server {site_server} for {address}")
         path = root.find(".//home-slide-file").text
 
     #site_root = f"http://{site_server}/network-{unicode_to_b36(network)}.site-{unicode_to_b36(site)}"
     res = requests.get("http://" + site_server + path, headers=headers)
-    fpath = os.path.join(src_dir, path[1:])
+    fpath = os.path.join(src_dir, sanitize_filename(path[1:]))
     if not os.path.exists(fpath):
         os.makedirs(os.path.dirname(fpath), exist_ok=True)
 

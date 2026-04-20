@@ -4,8 +4,9 @@ import requests
 import re
 import defusedxml.ElementTree as ET # Can swap for Python's built-in, this just provides a bit more security
 import argparse
+from pathvalidate import sanitize_filename
 
-parser = argparse.ArgumentParser(prog="Frogans Scraper (Alpha)")
+parser = argparse.ArgumentParser(prog="Frogans Scraper (Beta)")
 parser.add_argument("--skip-images", action="store_true", help="Skip downloading images")
 args = parser.parse_args()
 
@@ -57,7 +58,7 @@ def get_server_from_fnsl(root):
     return domain_names[fnsl_server_idx] + ":" + ports[fnsl_server_idx] + directories[fnsl_server_idx]
 
 fpbl_data = requests.get(fpbl_url, headers=headers).text
-f = open(os.path.join(outdir, "data.fpbl"), "w+")
+f = open(os.path.join(outdir, "data.fpbl"), "w+", encoding="utf-8")
 f.write(fpbl_data)
 f.close()
 
@@ -89,7 +90,7 @@ while(len(addresses_queue) > 0):
     else:
         fnsl_network = requests.get(f'http://{fnsl_server}/fnsl5.0/network-{unicode_to_b36(network.lower())}.fnsl', headers=headers).text
         os.makedirs(network_dir, exist_ok=True)
-        f = open(os.path.join(network_dir, "network-"+unicode_to_b36(network)+".fnsl"), "w+")
+        f = open(os.path.join(network_dir, "network-"+unicode_to_b36(network)+".fnsl"), "w+", encoding="utf-8")
         f.write(fnsl_network)
         f.close()
         networks[network] = fnsl_network
@@ -99,7 +100,7 @@ while(len(addresses_queue) > 0):
     else:
         fnsl_site = requests.get(f'http://{fnsl_server}/fnsl5.0/network-{unicode_to_b36(network.lower())}.site-{unicode_to_b36(site.lower())}.fnsl', headers=headers).text
         os.makedirs(site_dir, exist_ok=True)
-        f = open(os.path.join(site_dir, f'network-{unicode_to_b36(network.lower())}.site-{unicode_to_b36(site.lower())}.fnsl'), "w+")
+        f = open(os.path.join(site_dir, f'network-{unicode_to_b36(network.lower())}.site-{unicode_to_b36(site.lower())}.fnsl'), "w+", encoding="utf-8")
         f.write(fnsl_site)
         f.close()
         sites[site] = fnsl_site
@@ -116,7 +117,7 @@ while(len(addresses_queue) > 0):
 
     site_root = f"http://{site_server}/network-{unicode_to_b36(network.lower())}.site-{unicode_to_b36(site.lower())}"
     res = requests.get(site_root + path, headers=headers)
-    fpath = os.path.join(src_dir, path[1:])
+    fpath = os.path.join(src_dir, sanitize_filename(path[1:]))
     if not os.path.exists(fpath):
         os.makedirs(os.path.dirname(fpath), exist_ok=True)
 
