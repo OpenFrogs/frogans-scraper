@@ -8,6 +8,7 @@ from pathvalidate import sanitize_filename
 
 parser = argparse.ArgumentParser(prog="Frogans Scraper (Beta)")
 parser.add_argument("--skip-images", action="store_true", help="Skip downloading images")
+parser.add_argument("addresses", nargs="+", help="URLs to test")
 args = parser.parse_args()
 
 outdir = os.path.join(os.getcwd(), "archive")
@@ -16,7 +17,8 @@ os.makedirs(outdir, exist_ok=True)
 networks = {}
 sites = {}
 
-addresses_queue = ["frogans*demo"]
+addresses_queue = args.addresses
+addresses_queue.reverse()
 visited = set()
 
 fpbl_url = "http://fpb.p2205.test.lab.op3ft.org/architecture-1/fpbl1.0/data.fpbl"

@@ -9,6 +9,7 @@ from pathvalidate import sanitize_filename
 
 parser = argparse.ArgumentParser(prog="Frogans Scraper (Alpha)")
 parser.add_argument("--skip-images", action="store_true", help="Skip downloading images")
+parser.add_argument("addresses", nargs="+", help="URLs to test")
 args = parser.parse_args()
 
 outdir = os.path.join(os.getcwd(), "archive-alpha")
@@ -16,7 +17,8 @@ os.makedirs(outdir, exist_ok=True)
 
 sites = {}
 
-addresses_queue = ["frogans*lab"]
+addresses_queue = args.addresses
+addresses_queue.reverse()
 visited = set()
 
 #fal_server = "a.dev-1.fal.fns.test.fcr.frogans"
