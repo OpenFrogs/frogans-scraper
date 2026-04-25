@@ -130,7 +130,11 @@ while(len(addresses_queue) > 0):
 
     site_root = f"http://{site_server}/network-{unicode_to_b36(network.lower())}.site-{unicode_to_b36(site.lower())}"
     res = requests.get(site_root + path, headers=headers)
-    fpath = os.path.join(src_dir, sanitize_filename(path[1:]))
+    h = path[1:].split("/")
+    fpath = src_dir
+    for j in h:
+        fpath = os.path.join(fpath, sanitize_filename(j))
+    #print("fpath="+fpath)
     if not os.path.exists(fpath):
         os.makedirs(os.path.dirname(fpath), exist_ok=True)
 
