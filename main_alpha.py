@@ -75,16 +75,22 @@ while(len(addresses_queue) > 0):
     visited.add(address)
     print("Visiting "+address)
     network, siteLong = address.split("*")
-    addrParts = siteLong.split("/", maxsplit=1)
+    if len(siteLong) > 0:
+        addrParts = siteLong.split("/", maxsplit=1)
+    else:
+        addrParts = [""]
     site = addrParts[0]
+    siteFull = network+"*"+site
     path = "/"+addrParts[1] if len(addrParts) > 1 else None
     
     network_dir = os.path.join(outdir, network)
     site_dir = os.path.join(network_dir, site)
     src_dir = os.path.join(site_dir, "src")
     
-    if site in sites:
-        fnsl_site = sites[site]
+    if siteFull in sites:
+        fnsl_site = sites[siteFull]
+    elif len(site) == 0:
+        continue
     else:
         fnsl_enc = f'{unicode_to_b36(network.lower())}.lookup.{unicode_to_b36(site.lower())}.fnsl'
         sha1 = hashlib.sha1(fnsl_enc.encode()).hexdigest()
@@ -94,7 +100,7 @@ while(len(addresses_queue) > 0):
         f = open(os.path.join(site_dir, f'network-{unicode_to_b36(network.lower())}.site-{unicode_to_b36(site.lower())}.fnsl'), "w+", encoding="utf-8")
         f.write(fnsl_site)
         f.close()
-        sites[site] = fnsl_site
+        sites[siteFull] = fnsl_site
     
     try:
         root = ET.fromstring(fnsl_site)

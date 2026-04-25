@@ -78,8 +78,12 @@ while(len(addresses_queue) > 0):
     visited.add(address)
     print("Visiting "+address)
     network, siteLong = address.split("*")
-    addrParts = siteLong.split("/", maxsplit=1)
+    if len(siteLong) > 0:
+        addrParts = siteLong.split("/", maxsplit=1)
+    else:
+        addrParts = [""]
     site = addrParts[0]
+    siteFull = network+"*"+site
     path = "/"+addrParts[1] if len(addrParts) > 1 else None
     
     network_dir = os.path.join(outdir, network)
@@ -97,15 +101,22 @@ while(len(addresses_queue) > 0):
         f.close()
         networks[network] = fnsl_network
     
-    if site in sites:
-        fnsl_site = sites[site]
+    if siteFull in sites:
+        fnsl_site = sites[siteFull]
+    elif len(site) == 0:
+        networkExists = "<frogans-fnsl version='5.0'>" in fnsl_network
+        if networkExists:
+            print(network+"* exists")
+        else:
+            print(network+"* does not exist")
+        continue
     else:
         fnsl_site = requests.get(f'http://{fnsl_server}/fnsl5.0/network-{unicode_to_b36(network.lower())}.site-{unicode_to_b36(site.lower())}.fnsl', headers=headers).text
         os.makedirs(site_dir, exist_ok=True)
         f = open(os.path.join(site_dir, f'network-{unicode_to_b36(network.lower())}.site-{unicode_to_b36(site.lower())}.fnsl'), "w+", encoding="utf-8")
         f.write(fnsl_site)
         f.close()
-        sites[site] = fnsl_site
+        sites[siteFull] = fnsl_site
     
     try:
         root = ET.fromstring(fnsl_site)
