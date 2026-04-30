@@ -1,155 +1,58 @@
 # -*- coding: utf-8 -*-
-import os
-import requests
-import re
-import defusedxml.ElementTree as ET # Can swap for Python's built-in, this just provides a bit more security
+from helpers import *
+from alpha import *
+from beta import *
+import sys
 import argparse
-from pathvalidate import sanitize_filename
 
-parser = argparse.ArgumentParser(prog="Frogans Scraper (Beta)")
+parser = argparse.ArgumentParser(prog="Frogans Scraper")
 parser.add_argument("--skip-images", action="store_true", help="Skip downloading images")
+parser.add_argument("-a", "--alpha", action="store_true", help="Emulate Alpha player")
+parser.add_argument("-b", "--beta", action="store_true", help="Emulate Beta player")
 parser.add_argument("addresses", nargs="+", help="URLs to test")
 args = parser.parse_args()
 
-outdir = os.path.join(os.getcwd(), "archive")
-os.makedirs(outdir, exist_ok=True)
+if not (args.alpha or args.beta):
+    print("At least one of Alpha and Beta modes must be specified!")
+    sys.exit()
 
 networks = {}
 sites = {}
 
-addresses_queue = args.addresses
-addresses_queue.reverse()
+request_queue = []
+for address in args.addresses:
+    if args.alpha:
+        request_queue.append(AlphaRequest(address))
+    if args.beta:
+        request_queue.append(BetaRequest(address))
+
+request_queue.reverse()
 visited = set()
 
+fal_server = "fra-par-th2-fns-01-srv-01-01.fns.test.fcr.frogans"
 fpbl_url = "http://fpb.p2205.test.lab.op3ft.org/architecture-1/fpbl1.0/data.fpbl"
 
-headers = {'User-Agent': 'Frogans Scraper 0.1'}
+headers = {'User-Agent': 'Frogans Scraper 0.2'}
 
-image_extensions = ["png", "jpg"]
+image_extensions = ["png", "jpg", "gif"]
 
-# https://stackoverflow.com/a/60498038/8507259
-def b36_encode(i):
-    if i < 36: return "0123456789abcdefghijklmnopqrstuvwxyz"[i]
-    return b36_encode(i // 36) + b36_encode(i % 36)
+if args.alpha:
+    alphadir = os.path.join(os.getcwd(), "archive-alpha2")
+    os.makedirs(alphadir, exist_ok=True)
+    alpha_scraper = AlphaScraper({'output_dir': alphadir, 'headers': headers, 'fal_server': fal_server})
 
-def unicode_to_b36(s: str) :
-    result = ""
-    for char in s:
-        # Convert the codepoint to base 36 and pad it with 0s to a length of 4
-        base36_str = b36_encode(ord(char)).zfill(4)
-        result += base36_str
-    return result
+if args.beta:
+    betadir = os.path.join(os.getcwd(), "archive-beta2")
+    os.makedirs(betadir, exist_ok=True)
+    beta_scraper = BetaScraper({'output_dir': betadir, 'headers': headers, 'fpbl_url': fpbl_url})
 
-# Note: only partially consumes FNSL, not fully spec-compliant
-def get_server_from_fnsl(root):
-    domain_names = []
-    ports = []
-    directories = []
-    locations = []
-    for ucsr_path in root.findall(".//ucsr-path"):
-        for param in ucsr_path.findall("./param[@name='domain-name']"):
-            domain_names.append(param.text)
-        for param in ucsr_path.findall("./param[@name='port']"):
-            ports.append(param.text)
-        for param in ucsr_path.findall("./param[@name='directory']"):
-            directories.append(param.text)
-        for param in ucsr_path.findall("./param[@name='location']"):
-            locations.append(param.text)
-    
-    fnsl_server_idx = locations.index("public")
-    return domain_names[fnsl_server_idx] + ":" + ports[fnsl_server_idx] + directories[fnsl_server_idx]
-
-fpbl_data = requests.get(fpbl_url, headers=headers).text
-f = open(os.path.join(outdir, "data.fpbl"), "w+", encoding="utf-8")
-f.write(fpbl_data)
-f.close()
-
-root = ET.fromstring(fpbl_data)
-fnsl_server = get_server_from_fnsl(root.find(".//bootstrap-fnsl"))
-print("Using FNSL server "+fnsl_server)
-
-while(len(addresses_queue) > 0):
-    address = addresses_queue.pop()
-    if address in visited:
-        continue
-    extension = re.search("\\.(\\w+)$", address)
+while(len(request_queue) > 0):
+    request = request_queue.pop()
+    extension = re.search("\\.(\\w+)$", request.address)
     if args.skip_images and extension and extension.group(1) in image_extensions:
         continue
-    visited.add(address)
-    print("Visiting "+address)
-    network, siteLong = address.split("*")
-    if len(siteLong) > 0:
-        addrParts = siteLong.split("/", maxsplit=1)
-    else:
-        addrParts = [""]
-    site = addrParts[0]
-    siteFull = network+"*"+site
-    path = "/"+addrParts[1] if len(addrParts) > 1 else None
     
-    network_dir = os.path.join(outdir, network)
-    site_dir = os.path.join(network_dir, site)
-    src_dir = os.path.join(site_dir, "src")
-    
-    # We don't actually use this data currently, just archive it
-    if network in networks:
-        fnsl_network = networks[network]
-    else:
-        fnsl_network = requests.get(f'http://{fnsl_server}/fnsl5.0/network-{unicode_to_b36(network.lower())}.fnsl', headers=headers).text
-        os.makedirs(network_dir, exist_ok=True)
-        f = open(os.path.join(network_dir, "network-"+unicode_to_b36(network)+".fnsl"), "w+", encoding="utf-8")
-        f.write(fnsl_network)
-        f.close()
-        networks[network] = fnsl_network
-    
-    if siteFull in sites:
-        fnsl_site = sites[siteFull]
-    elif len(site) == 0:
-        networkExists = "<frogans-fnsl version='5.0'>" in fnsl_network
-        if networkExists:
-            print(network+"* exists")
-        else:
-            print(network+"* does not exist")
-        continue
-    else:
-        fnsl_site = requests.get(f'http://{fnsl_server}/fnsl5.0/network-{unicode_to_b36(network.lower())}.site-{unicode_to_b36(site.lower())}.fnsl', headers=headers).text
-        os.makedirs(site_dir, exist_ok=True)
-        f = open(os.path.join(site_dir, f'network-{unicode_to_b36(network.lower())}.site-{unicode_to_b36(site.lower())}.fnsl'), "w+", encoding="utf-8")
-        f.write(fnsl_site)
-        f.close()
-        sites[siteFull] = fnsl_site
-    
-    try:
-        root = ET.fromstring(fnsl_site)
-    except Exception as e:
-        print("Invalid FNSL data, skipping")
-        continue
-    site_server = get_server_from_fnsl(root)
-    if path == None:
-        print(f"Found server {site_server} for {address}")
-        path = root.find(".//file-selector").text
-
-    site_root = f"http://{site_server}/network-{unicode_to_b36(network.lower())}.site-{unicode_to_b36(site.lower())}"
-    res = requests.get(site_root + path, headers=headers)
-    h = path[1:].split("/")
-    fpath = src_dir
-    for j in h:
-        fpath = os.path.join(fpath, sanitize_filename(j))
-    #print("fpath="+fpath)
-    if not os.path.exists(fpath):
-        os.makedirs(os.path.dirname(fpath), exist_ok=True)
-
-    f = open(fpath, "wb+")
-    f.write(res.content)
-    f.close()
-    
-    fsdl_dec = re.search(r"<frogans-fsdl version=['\"]([^'\"]+)['\"]>", res.text)
-    if fsdl_dec is not None:
-        version = fsdl_dec.group(1)
-        if version != "4.0":
-            print("Unexpected version "+version+" at address "+address)
-        for locMatch in re.finditer(r"(?:file|address)=['\"]([^'\"]+)['\"]", res.text):
-            location = locMatch.group(1)
-            if location.startswith("/"):
-                location = network + "*" + site + location
-            addresses_queue.append(location)
-    # TODO: check if FSDL, extract files accordingly
+    if isinstance(request, AlphaRequest):
+        request_queue.extend(alpha_scraper.scrape(request))
+    elif isinstance(request, BetaRequest):
+        request_queue.extend(beta_scraper.scrape(request))
